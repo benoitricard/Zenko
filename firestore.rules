@@ -1,13 +1,33 @@
-// firestore.rules
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function isOwner(uid) {
-      return request.auth != null && request.auth.uid == uid;
+    function isOwner(uid) { return request.auth != null && request.auth.uid == uid; }
+
+    match /budgets/{uid}/envelopes/{env} {
+      allow read: if isOwner(uid);
+      allow create, update: if isOwner(uid)
+        && request.resource.data.base is int
+        && request.resource.data.base > 0
+        && (request.resource.data.carry == null || request.resource.data.carry is int)
+        && request.resource.data.period in ["monthly","weekly","biweekly","daily","once"]
+        && (request.resource.data.resetDow == null || request.resource.data.resetDow in [0,1,2,3,4,5,6])
+        && (request.resource.data.resetDom == null || (request.resource.data.resetDom is int && request.resource.data.resetDom >= 1 && request.resource.data.resetDom <= 31))
+        && request.resource.data.lastResetAt is timestamp;
+      allow delete: if isOwner(uid);
     }
 
-    match /budgets/{uid}/{collection}/{docId} {
-      allow read, write: if isOwner(uid);
+    // ✅ Ici la vérif groupId ne s'applique que si la clé existe
+    match /budgets/{uid}/transactions/{doc} {
+      allow read: if isOwner(uid);
+      allow create: if isOwner(uid)
+        && request.resource.data.amount is int
+        && request.resource.data.envelopeId is string
+        && request.resource.data.at is timestamp
+        && (
+          !request.resource.data.keys().hasAny(['groupId']) ||
+          request.resource.data.groupId is string
+        );
+      allow update, delete: if isOwner(uid);
     }
   }
 }
