@@ -29,6 +29,17 @@ export default function TransferModal({ envelopes, fromId, onSubmit, onCancel, i
     const cents = useMemo(() => parseToCents(amountStr), [amountStr]);
     const valid = from && to && from !== to && cents > 0;
 
+    const [when, setWhen] = useState(() => {
+    const d = initial?.at ? new Date(initial.at) : new Date();
+    const pad = (n)=>String(n).padStart(2,"0");
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  });
+
+  const toDate = (s) => {
+    const d = new Date(s);
+    return Number.isNaN(d.getTime()) ? new Date() : d;
+  };
+
     return (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "grid", placeItems: "center", zIndex: 60 }}>
             <div style={{ width: "100%", maxWidth: 480, background: "#10151f", borderRadius: 20, padding: 16, color: "#e8ecf1" }}>
@@ -74,11 +85,21 @@ export default function TransferModal({ envelopes, fromId, onSubmit, onCancel, i
                         style={{ padding: 10, borderRadius: 10, border: "1px solid #2a3344", background: "#0e1422", color: "#e8ecf1" }}
                     />
                 </label>
+                
+                <label style={{display:"grid",gap:6,marginBottom:12}}>
+    <span>Date / heure</span>
+    <input
+      type="datetime-local"
+      value={when}
+      onChange={(e)=>setWhen(e.target.value)}
+      style={{padding:10,borderRadius:10,border:"1px solid #2a3344",background:"#0e1422",color:"#e8ecf1"}}
+    />
+  </label>
 
                 <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
                     <button onClick={onCancel} style={{ flex: 1 }}>Annuler</button>
                     <button
-                        onClick={() => valid && onSubmit({ from, to, amount: cents, note })}
+                        onClick={() => valid && onSubmit({ from, to, amount: cents, note, at: toDate(when)})}
                         disabled={!valid}
                         style={{ flex: 2, background: "#00d084", color: "#003222" }}
                     >
