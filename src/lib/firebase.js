@@ -132,19 +132,17 @@ export async function addTransaction(uid, envelopeId, amount, note = "", at = ne
     amount,                          // + entrée, - sortie (centimes)
     note,
     type: amount >= 0 ? "ENTRÉE" : "SORTIE",
-    at,                              // Date JS
+    at: ensureDate(at),                              // Date JS
     createdAt: serverTimestamp(),
   });
 }
 
 export async function getTransactionsForWindow(uid, envelopeId, start, end) {
-  const q = query(
-    collection(db, "budgets", uid, "transactions"),
-    where("envelopeId", "==", envelopeId),
-    where("at", ">=", start),
-    where("at", "<", end),
-    orderBy("at", "desc")
-  );
+  const col = collection(db, "budgets", uid, "transactions");
+  const constraints = [ where("envelopeId", "==", envelopeId), orderBy("at", "desc") ];
+  if (start) constraints.push(where("at", ">=", ensureDate(start)));
+  if (end)   constraints.push(where("at", "<", ensureDate(end)));
+  const q = query(col, ...constraints);
   const snap = await getDocs(q);
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
@@ -181,7 +179,7 @@ export async function transferBetweenEnvelopes(uid, fromId, toId, amount, note =
       amount: -abs,
       type: "TRANSFERT_OUT",
       note: `${note} → vers ${toId}`,
-      at,
+      at: ensureDate(at),
       createdAt: serverTimestamp(),
     });
 
@@ -191,7 +189,7 @@ export async function transferBetweenEnvelopes(uid, fromId, toId, amount, note =
       amount:  abs,
       type: "TRANSFERT_IN",
       note: `${note} ← de ${fromId}`,
-      at,
+      at: ensureDate(at),
       createdAt: serverTimestamp(),
     });
   });
@@ -236,22 +234,41 @@ export async function deleteTransfer(uid, groupId) {
   await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
 }
 
-// -------- Rollover (appelé au changement d’enveloppe / au chargement)
 export async function rollEnvelopeIfNeeded(uid, envelope) {
-  const { start, next } = getCurrentWindow(envelope, new Date());
-  const now = new Date();
+  if (envelope?.period === "once") {
+        // Pas de cycle → pas de rollover, on retourne juste la “fenêtre” neutre
+        const { start, next } = getCurrentWindow(envelope, new Date());
+        return { changed: false, start, next };
+      }
+      const now = new Date();
+  const { start, next } = getCurrentWindow(envelope, now);
   if (now < next) return { changed: false, start, next };
 
-  // Il faut avancer d’au moins un cycle : on calcule la somme des montants de la fenêtre écoulée.
+  // 1) Somme de la période écoulée
   const txs = await getTransactionsForWindow(uid, envelope.id, start, next);
-  const sum = txs.reduce((acc, t) => acc + (t.amount || 0), 0); // somme signée des montants
-  const newCarry = (envelope.carry || 0) + (envelope.base || 0) + sum; // carry += base + net(montants)
+  const sumAll = txs.reduce((acc, t) => acc + (t.amount || 0), 0);
+  const sumNoCarry = txs.filter(t => t.noCarry).reduce((acc, t) => acc + (t.amount || 0), 0);
+  const sumForCarry = sumAll - sumNoCarry;
 
-  // Avance d’un cran (un seul cycle). Si tu veux rattraper plusieurs cycles, boucle.
+  // 2) Carry = carry précédent + base de la période écoulée + somme signée de la période (hors noCarry)
+  const baseForClosingPeriod = envelope.base || 0;
+  const newCarry = (envelope.carry || 0) + baseForClosingPeriod + sumForCarry;
+
+  // 3) Patch enveloppe : on avance lastResetAt ; on applique nextBase si présent
   const envRef = doc(db, "budgets", uid, "envelopes", envelope.id);
-  await updateDoc(envRef, { carry: newCarry, lastResetAt: next });
+  const patch = { carry: newCarry, lastResetAt: next };
 
-  return { changed: true, start: next, next: getCurrentWindow({ ...envelope, lastResetAt: next }, now).next };
+  if (typeof envelope.nextBase === "number") {
+    patch.base = envelope.nextBase;   // nouvelle base pour le cycle qui démarre
+    patch.nextBase = null;            // on consomme la consigne "prochain budget"
+  }
+
+  await updateDoc(envRef, patch);
+
+  // 4) Recalcule la prochaine fenêtre à partir des valeurs mises à jour
+  const updated = { ...envelope, ...patch };
+  const { next: next2 } = getCurrentWindow(updated, now);
+  return { changed: true, start: next, next: next2 };
 }
 
 // -------- Email / Password
@@ -317,4 +334,12 @@ export async function linkAnonToGoogle({ redirectFallback = true } = {}) {
     }
     throw e;
   }
+}
+
+// Garantit une Date JS (Firestore accepte les Date directement)
+function ensureDate(x) {
+  if (!x) return new Date();
+  if (x.toDate) return x.toDate();
+  const d = new Date(x);
+  return Number.isNaN(d.getTime()) ? new Date() : d;
 }

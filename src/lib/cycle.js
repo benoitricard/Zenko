@@ -28,6 +28,11 @@ export function getCurrentWindow(envelope, now = new Date()) {
   const period = envelope.period || "monthly";
   const last = dayjs(envelope.lastResetAt?.toDate?.() ? envelope.lastResetAt.toDate() : envelope.lastResetAt || new Date()).startOf("day");
 
+  if (envelope.period === "once") {
+    const start = envelope.lastResetAt ? new Date(envelope.lastResetAt) : new Date(0);
+    return { start, next: null }; // 👈 pas de borne haute
+  }
+
   if (period === "daily") {
     const start = dayjs(now).startOf("day");
     return { start: start.toDate(), next: start.add(1, "day").toDate() };
