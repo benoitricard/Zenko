@@ -13,6 +13,7 @@ import AmountModal from "./components/AmountModal";
 import TransferModal from "./components/TransferModal";
 import EnvelopeModal from "./components/EnvelopeModal";
 import EmailAuthModal from "./components/EmailAuthModal";
+import CarrouselEnv from "./components/CarrouselEnv";
 
 /* =========================
    Helpers dates, libellés & formatage
@@ -141,6 +142,19 @@ export default function App() {
 
   const activeEnv = envelopes.find(e => e.id === activeId) || null;
 
+  const USD2 = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  function formatCentsUSSplit(cents) {
+    const v = (cents || 0) / 100;
+    const parts = USD2.formatToParts(v);
+    let sign = "", intStr = "", decStr = "";
+    for (const p of parts) {
+      if (p.type === "minusSign") sign = p.value;               // "-"
+      if (p.type === "integer" || p.type === "group") intStr += p.value; // "1,234"
+      if (p.type === "decimal" || p.type === "fraction") decStr += p.value; // ".56"
+    }
+    return { int: sign + intStr, dec: decStr || ".00" };
+  }
+
   async function refreshActive() {
     if (!user || !activeId) return;
 
@@ -238,6 +252,7 @@ export default function App() {
 
   const sum = transactions.reduce((a, t) => a + (t.amount || 0), 0);
   const availableCents = (activeEnv?.base || 0) + (activeEnv?.carry || 0) + sum;
+  const avail = formatCentsUSSplit(availableCents);
 
   /** Fenêtre courante (pour l’entête des blocs non-quotidiens) */
   const currentWindow = useMemo(() => {
@@ -347,8 +362,42 @@ export default function App() {
   }, [transactions, activeEnv, currentWindow]);
 
   return (
-    <div style={{ padding: 20 }}>
-      <h1>Zenko Budget</h1>
+    <div className="app">
+      {user &&
+        <CarrouselEnv
+          envelopes={envelopes}
+          transactions={transactions}
+          formatCentsUSSplit={formatCentsUSSplit}
+        />
+      }
+      {/* <div className="app__body">
+        <header className="header">
+          <h1 className="header__title">
+            {activeEnv?.name}
+          </h1>
+        </header>
+        <div className="amount">
+          <p className="amount__sum">
+            {avail.int}
+            <span className="amount__sum__dec">
+              {avail.dec}
+            </span>
+            €
+          </p>
+          <p className="amount__text">
+            Restants
+            {(() => {
+              switch (periodLabel(activeEnv?.period)) {
+                case "Hebdomadaire": return " cette semaine";
+                case "Quinzomadaire": return " ces deux semaines";
+                case "Journalier": return " ce jour-ci";
+                case "Mensuel": return " ce mois-ci";
+                default: return "";
+              }
+            })()}
+          </p>
+        </div>
+      </div> */}
 
       {!user && (
         <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>

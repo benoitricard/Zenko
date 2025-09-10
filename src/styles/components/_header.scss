@@ -1,0 +1,9 @@
+.header {
+    @include flex(row, center, center);
+    width: 100%;
+
+    &__title {
+        font-size: 30px;
+        font-weight: 700;
+    }
+}

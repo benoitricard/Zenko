@@ -1,0 +1,8 @@
+.app {
+    overflow-x: hidden;
+
+    &__body {
+        position: relative;
+        height: 100vh;
+    }
+}

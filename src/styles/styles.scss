@@ -1,0 +1,10 @@
+@import "./utils/variables";
+@import "./utils/mixins";
+
+@import "./base/main";
+
+@import "./components/header";
+@import "./components/amount";
+@import "./components/carrousel";
+
+@import "./layout/app";
